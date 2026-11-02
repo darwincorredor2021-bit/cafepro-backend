@@ -1,6 +1,6 @@
 const obtenerPrecioCafé = async (req, res) => {
     try {
-        const precioOficialCarga = 2075000; 
+        const precioOficialCarga = 2080000; 
 
         res.json({
             ok: true,
