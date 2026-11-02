@@ -6,6 +6,7 @@ const db = require('./config/db');
 const usuariosRoutes = require('./routes/usuarios.routes');
 const registrosRoutes = require('./routes/registros.routes');
 const precioRoutes = require('./routes/precio.routes');
+const noticiasRoutes = require('./routes/noticias.routes');
 
 class Servidor {
   constructor() {
@@ -29,6 +30,7 @@ class Servidor {
     this.app.use('/api/usuarios', usuariosRoutes);
     this.app.use('/api/registros', registrosRoutes);
     this.app.use('/api/precio', precioRoutes);
+    this.app.use('/api/noticias', noticiasRoutes);
 
     // Si ninguna ruta coincidió, respondemos 404
     this.app.use((req, res) => {
