@@ -4,7 +4,7 @@ const parser = new Parser();
 const obtenerNoticiasCafeteras = async (req, res) => {
     try {
         // Feed RSS de noticias de café en Colombia vía Google News
-        const urlRSS = 'https://news.google.com/rss/search?q=cafe+colombia+federacion+cafeteros&hl=es-419&gl=CO&ceid=CO:es-419';
+        const urlRSS = 'https://www.agronegocios.co/rss/agro';
         const feed = await parser.parseURL(urlRSS);
 
         // Tomamos las 5 noticias más recientes
