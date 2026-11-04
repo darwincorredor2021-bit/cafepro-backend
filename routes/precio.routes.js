@@ -1,8 +1,10 @@
 const express = require('express');
-const router = express.Router();
-const { obtenerPrecioCafé } = require('../controllers/PrecioController');
+const PrecioController = require('../controllers/PrecioController');
 
-// Ruta GET para consultar el precio del café
-router.get('/', obtenerPrecioCafé);
+const router = express.Router();
+const controlador = new PrecioController();
+
+// GET /api/precio  → precio estimado de la carga de 125 kg en pesos colombianos
+router.get('/', (req, res) => controlador.obtener(req, res));
 
 module.exports = router;
