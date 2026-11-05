@@ -1,22 +1,42 @@
+// =====================================================================
+// config/db.js — Conexión a la base de datos MySQL
+// Este archivo crea UNA sola conexión compartida (un "pool") que usan
+// todos los controladores para ejecutar consultas SQL.
+// =====================================================================
+
 const mysql = require('mysql2/promise');
 
-// Las bases de datos en la nube (Aiven) EXIGEN conexión cifrada (SSL).
-// En tu computador local no hace falta, por eso se activa solo si DB_SSL=true.
+/**
+ * Decide si la conexión a MySQL debe ir cifrada (SSL).
+ * - En tu computador no hace falta, por eso queda desactivado.
+ * - Las bases de datos en la nube (como Aiven) la exigen: se activa
+ *   poniendo DB_SSL=true en las variables de entorno.
+ *
+ * @returns {object|undefined} Configuración SSL para mysql2, o undefined si no se usa.
+ */
 function configurarSSL() {
   if (process.env.DB_SSL !== 'true') return undefined;
 
-  // Opción recomendada: si pegas el certificado de Aiven en DB_CA, se verifica el servidor
+  // Opción recomendada: con el certificado del proveedor en DB_CA se verifica
+  // que realmente nos conectamos a su servidor.
   if (process.env.DB_CA) {
     return { ca: process.env.DB_CA };
   }
-  // Opción simple: conexión cifrada sin verificar el certificado
+
+  // Opción simple: la conexión va cifrada, pero sin verificar el certificado.
   return { rejectUnauthorized: false };
 }
 
-// Clase que se encarga ÚNICAMENTE de hablar con MySQL
+/**
+ * Clase que se encarga ÚNICAMENTE de hablar con MySQL.
+ * El resto de la aplicación nunca se conecta directamente: le pide
+ * a esta clase que ejecute las consultas.
+ */
 class Database {
   constructor() {
-    // Un "pool" es un grupo de conexiones listas para usar.
+    // Un "pool" es un grupo de conexiones abiertas y listas para usarse.
+    // Es más rápido que abrir y cerrar una conexión en cada petición.
+    // Los datos de acceso se leen del archivo .env (nunca se escriben en el código).
     this.pool = mysql.createPool({
       host: process.env.DB_HOST || 'localhost',
       port: Number(process.env.DB_PORT) || 3306,
@@ -24,26 +44,37 @@ class Database {
       password: process.env.DB_PASSWORD || '',
       database: process.env.DB_NAME || 'cafepro_db',
       ssl: configurarSSL(),
-      waitForConnections: true,
-      connectionLimit: 10,
-      connectTimeout: 20000, // la nube puede tardar más que tu PC
-      decimalNumbers: true,  // DECIMAL llega como número (no como texto "125.00")
-      dateStrings: true      // DATE llega como "2026-11-01"
+      waitForConnections: true, // si todas las conexiones están ocupadas, espera turno
+      connectionLimit: 10,      // máximo de conexiones simultáneas
+      connectTimeout: 20000,    // la nube puede tardar más que un MySQL local (20 s)
+      decimalNumbers: true,     // los DECIMAL llegan como número y no como texto ("125.00")
+      dateStrings: true         // los DATE llegan como texto "2026-11-01", sin cambios de zona horaria
     });
   }
 
-  // Ejecuta una consulta SQL con parámetros (los "?" evitan la inyección SQL)
+  /**
+   * Ejecuta una consulta SQL de forma segura.
+   * Los signos "?" del SQL se reemplazan por los valores de `params`; así el
+   * dato siempre se trata como dato y nunca como código (evita la inyección SQL).
+   *
+   * @param {string} sql     Consulta con "?" donde van los valores.
+   * @param {Array}  params  Valores que reemplazan a cada "?", en orden.
+   * @returns {Promise<Array|object>} Filas (SELECT) o resumen de la operación (INSERT/UPDATE/DELETE).
+   */
   async query(sql, params = []) {
     const [resultado] = await this.pool.execute(sql, params);
     return resultado;
   }
 
-  // Se usa al arrancar para confirmar que MySQL responde
+  /**
+   * Comprueba que MySQL responde. Se usa al arrancar el servidor:
+   * si falla, lanza un error y el servidor no se inicia.
+   */
   async probarConexion() {
     const conexion = await this.pool.getConnection();
-    conexion.release();
+    conexion.release(); // devuelve la conexión al pool
   }
 }
 
-// Exportamos UNA sola instancia, así toda la app comparte el mismo pool
+// Se exporta UNA sola instancia: toda la aplicación comparte el mismo pool.
 module.exports = new Database();

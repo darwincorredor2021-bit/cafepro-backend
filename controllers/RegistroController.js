@@ -1,32 +1,50 @@
+// =====================================================================
+// controllers/RegistroController.js — Registros de cosecha (pases)
+// CRUD completo de los registros de cosecha de cada agricultor: kilos
+// secos, kilos cereza, precio de venta por kilo, egresos y ganancia.
+// =====================================================================
+
 const db = require('../config/db');
 const BaseController = require('./BaseController');
 
 class RegistroController extends BaseController {
-  // Valida y convierte los datos numéricos. Devuelve { error } o los valores listos.
+  /**
+   * Valida y convierte los datos numéricos que llegan en el cuerpo de la petición.
+   * Además calcula la ganancia: kilos secos × precio por kilo − egresos.
+   *
+   * @param {object} body  Datos enviados por el cliente (JSON).
+   * @returns {object}     { error } si hay un dato inválido, o los valores ya convertidos y la ganancia.
+   */
   normalizar(body) {
     const kilosSeco = Number(body.kilos_seco);
-    const kilosCereza = Number(body.kilos_cereza ?? 0);
+    const kilosCereza = Number(body.kilos_cereza ?? 0); // si no viene, se asume 0
     const precioVenta = Number(body.precio_venta);
-    const egresos = Number(body.egresos ?? 0);
+    const egresos = Number(body.egresos ?? 0);          // si no viene, se asume 0
 
+    // Se escribe !(x > 0) para que también falle cuando el valor no es un número (NaN).
     if (!(kilosSeco > 0)) return { error: 'kilos_seco debe ser un número mayor a 0' };
     if (!(precioVenta > 0)) return { error: 'precio_venta debe ser un número mayor a 0' };
     if (!(kilosCereza >= 0) || !(egresos >= 0)) {
       return { error: 'kilos_cereza y egresos deben ser números iguales o mayores a 0' };
     }
 
+    // Se redondea a 2 decimales para evitar errores de coma flotante.
     const ganancia = Math.round((kilosSeco * precioVenta - egresos) * 100) / 100;
     return { kilosSeco, kilosCereza, precioVenta, egresos, ganancia };
   }
 
-  // GET /api/registros            → todos
-  // GET /api/registros?usuario_id=1 → solo los de ese agricultor
+  /**
+   * GET /api/registros                  → todos los registros
+   * GET /api/registros?usuario_id=1     → solo los de ese agricultor
+   * Los registros salen del más reciente al más antiguo.
+   */
   async listar(req, res) {
     try {
       const { usuario_id } = req.query;
       let sql = 'SELECT * FROM registros_cosecha';
       const params = [];
 
+      // El filtro por agricultor es opcional: solo se agrega si viene en la URL.
       if (usuario_id) {
         sql += ' WHERE usuario_id = ?';
         params.push(usuario_id);
@@ -40,7 +58,10 @@ class RegistroController extends BaseController {
     }
   }
 
-  // GET /api/registros/:id
+  /**
+   * GET /api/registros/:id
+   * Devuelve un registro según su id. Responde 404 si no existe.
+   */
   async obtenerPorId(req, res) {
     try {
       const filas = await db.query('SELECT * FROM registros_cosecha WHERE id = ?', [req.params.id]);
@@ -53,7 +74,12 @@ class RegistroController extends BaseController {
     }
   }
 
-  // POST /api/registros
+  /**
+   * POST /api/registros
+   * Crea un registro de cosecha. Recibe: usuario_id, kilos_seco, precio_venta
+   * y, opcionalmente, kilos_cereza, egresos y fecha (AAAA-MM-DD).
+   * La ganancia la calcula el servidor, no el cliente.
+   */
   async crear(req, res) {
     try {
       const body = req.body || {};
@@ -68,7 +94,7 @@ class RegistroController extends BaseController {
         return res.status(400).json({ mensaje: datos.error });
       }
 
-      // Si no mandan fecha, MySQL usa la fecha de hoy (CURDATE())
+      // COALESCE(?, CURDATE()): si no mandan fecha (null), MySQL usa la fecha de hoy.
       const resultado = await db.query(
         `INSERT INTO registros_cosecha
            (usuario_id, fecha, kilos_seco, kilos_cereza, precio_venta, egresos, ganancia)
@@ -77,6 +103,7 @@ class RegistroController extends BaseController {
          datos.precioVenta, datos.egresos, datos.ganancia]
       );
 
+      // Se vuelve a leer el registro para devolverlo completo (con id y fecha finales).
       const filas = await db.query('SELECT * FROM registros_cosecha WHERE id = ?', [resultado.insertId]);
       res.status(201).json({ mensaje: 'Registro creado correctamente', registro: filas[0] });
     } catch (error) {
@@ -84,7 +111,11 @@ class RegistroController extends BaseController {
     }
   }
 
-  // PUT /api/registros/:id
+  /**
+   * PUT /api/registros/:id
+   * Actualiza un registro existente. Se recalcula la ganancia con los nuevos valores.
+   * Si no se envía la fecha, se conserva la que ya tenía.
+   */
   async actualizar(req, res) {
     try {
       const { id } = req.params;
@@ -116,7 +147,10 @@ class RegistroController extends BaseController {
     }
   }
 
-  // DELETE /api/registros/:id
+  /**
+   * DELETE /api/registros/:id
+   * Elimina un registro. Responde 404 si el id no existía.
+   */
   async eliminar(req, res) {
     try {
       const resultado = await db.query('DELETE FROM registros_cosecha WHERE id = ?', [req.params.id]);
